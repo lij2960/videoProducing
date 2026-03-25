@@ -22,7 +22,8 @@ def enhance_prompt(prompt: str) -> str:
 
 def translate_and_enhance(prompts: list[str], use_api: bool = True) -> list[str]:
     """
-    将中文提示词翻译为英文并增强质量
+    将中文提示词翻译为英文并增强质量。
+    自动提取第一个场景的主体，注入到后续所有场景，保持主体一致性。
 
     Args:
         prompts: 中文提示词列表
@@ -31,14 +32,53 @@ def translate_and_enhance(prompts: list[str], use_api: bool = True) -> list[str]
     Returns:
         增强后的英文提示词列表
     """
+    # 先翻译所有场景
+    translated = [_translate(p, use_api) for p in prompts]
+
+    # 从第一个场景提取主体（主语），注入到后续场景
+    subject = _extract_subject(translated[0])
+    if subject:
+        print(f"  检测到主体: {subject}，将注入到所有场景\n")
+
     results = []
-    for prompt in prompts:
-        translated = _translate(prompt, use_api)
-        enhanced = enhance_prompt(translated)
-        print(f"  原文: {prompt}")
+    for i, (orig, trans) in enumerate(zip(prompts, translated)):
+        # 后续场景如果没有主体，自动补充
+        if i > 0 and subject and not _contains_subject(trans, subject):
+            trans = f"{subject}, {trans}"
+        enhanced = enhance_prompt(trans)
+        print(f"  原文: {orig}")
         print(f"  译文: {enhanced}\n")
         results.append(enhanced)
     return results
+
+
+def _extract_subject(english_text: str) -> str:
+    """
+    提取主体：取句子里第一个动词（-ing/-ed 结尾或常见动词）之前的词组
+    """
+    import re
+    words = english_text.split()
+    subject_words = []
+    for word in words:
+        clean = word.strip(",.").lower()
+        # 遇到动词形式就停止
+        if (clean.endswith("ing") or clean.endswith("ed")
+                or clean in {"is", "are", "was", "were", "has", "have", "runs", "sits"}):
+            break
+        subject_words.append(word.strip(",."))
+
+    subject = " ".join(subject_words).strip()
+    # 必须包含冠词开头才认为是有效主体
+    if subject and subject.split()[0].lower() in {"a", "an", "the"}:
+        return subject
+    return ""
+
+
+def _contains_subject(text: str, subject: str) -> bool:
+    """判断文本是否已包含主体关键词"""
+    # 取主体的核心名词（最后一个词）做匹配
+    core = subject.split()[-1].lower()
+    return core in text.lower()
 
 
 def _translate(text: str, use_api: bool) -> str:
