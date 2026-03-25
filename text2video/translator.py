@@ -74,24 +74,35 @@ def _translate_via_helsinki(text: str) -> str:
 
 def _local_translate(text: str) -> str:
     """
-    简单的关键词替换，作为兜底方案
-    覆盖常见场景描述词
+    关键词替换兜底方案，按长词优先匹配避免误替换
     """
     mapping = {
+        # 长词优先（避免被短词提前替换）
         "一只猫": "a cat",
+        "一只狗": "a dog",
+        "夕阳西下": "sunset, golden hour",
+        "灯火通明": "glowing with lights",
+        "星空下": "under the starry night sky",
+        "草地上": "in the green meadow",
+        "天空变成": "the sky turns",
+        "城市灯火": "city lights",
+        # 常用词
         "猫": "cat",
         "狗": "dog",
         "草地": "green meadow",
         "玩耍": "playing",
-        "夕阳西下": "sunset, golden hour",
         "夕阳": "sunset",
         "天空": "sky",
-        "橙红色": "orange and red colors",
+        "橙红色": "orange and red",
+        "橙色": "orange",
+        "红色": "red",
+        "蓝色": "blue",
         "星空": "starry night sky",
+        "星星": "stars",
         "城市": "city",
-        "灯火通明": "glowing city lights",
         "森林": "forest",
         "大海": "ocean",
+        "海边": "seaside",
         "山": "mountain",
         "雪": "snow",
         "雨": "rain",
@@ -103,19 +114,38 @@ def _local_translate(text: str) -> str:
         "建筑": "architecture",
         "古风": "ancient Chinese style",
         "科幻": "sci-fi",
-        "梦幻": "dreamy, fantasy",
+        "梦幻": "dreamy fantasy",
         "黄昏": "dusk, golden hour",
         "清晨": "early morning, dawn",
-        "夜晚": "night",
+        "夜晚": "at night",
+        "夜": "night",
         "白天": "daytime",
+        "阳光": "sunlight",
+        "云": "clouds",
+        "风": "wind",
+        "河流": "river",
+        "湖": "lake",
+        "沙漠": "desert",
+        "街道": "street",
+        "公园": "park",
+        "下": "under",
+        "上": "on",
+        "中": "in",
+        "里": "inside",
+        "，": ", ",
+        "。": ". ",
     }
 
+    # 按键长度降序排列，长词优先匹配
+    sorted_mapping = sorted(mapping.items(), key=lambda x: len(x[0]), reverse=True)
+
     result = text
-    for zh, en in mapping.items():
+    for zh, en in sorted_mapping:
         result = result.replace(zh, en)
 
-    # 如果还有中文字符，加个通用描述兜底
-    if any("\u4e00" <= c <= "\u9fff" for c in result):
-        result = f"beautiful scene, {result}"
+    # 清理残留中文字符，替换为空格
+    import re
+    result = re.sub(r'[\u4e00-\u9fff]+', ' ', result)
+    result = re.sub(r'\s+', ' ', result).strip()
 
     return result

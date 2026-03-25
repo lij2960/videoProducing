@@ -79,8 +79,8 @@ def generate_frames(
     frame_paths = []
     frame_idx = 0
 
-    for i, (orig, prompt) in enumerate(zip(prompts, enhanced_prompts)):
-        print(f"生成场景 {i+1}/{len(prompts)}: {orig}")
+    for i, prompt in enumerate(tqdm(enhanced_prompts, desc="生成场景")):
+        print(f"生成场景 {i+1}/{len(enhanced_prompts)}: {prompt[:80]}")
 
         for j in range(frames_per_prompt):
             generator = torch.Generator().manual_seed(i * 100 + j)

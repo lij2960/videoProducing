@@ -27,7 +27,7 @@ def main():
     parser.add_argument("--output", type=str, default="output.mp4", help="输出视频路径")
     parser.add_argument("--frames-dir", type=str, default="frames", help="图片帧保存目录")
     parser.add_argument("--frames-per-prompt", type=int, default=1, help="每个场景生成几张关键帧")
-    parser.add_argument("--duration", type=float, default=0.1, help="插帧模式下每帧显示时长（秒）")
+    parser.add_argument("--duration", type=float, default=0.5, help="插帧模式下每帧显示时长（秒）")
     parser.add_argument("--fps", type=int, default=24, help="视频帧率")
     parser.add_argument("--steps", type=int, default=40, help="text2img 推理步数")
     parser.add_argument("--interp-steps", type=int, default=20, help="img2img 插帧推理步数")
@@ -66,16 +66,16 @@ def main():
     else:
         enhanced_prompts = prompts
 
-    # 3. 加载模型，生成关键帧
+    # 3. 加载模型，生成关键帧（传入已翻译增强的提示词）
     pipe = load_pipeline(args.model)
     keyframe_paths = generate_frames(
-        prompts=prompts,
+        prompts=enhanced_prompts,  # 使用翻译后的英文提示词
         output_dir=args.frames_dir,
         frames_per_prompt=args.frames_per_prompt,
         width=args.width,
         height=args.height,
         num_inference_steps=args.steps,
-        translate=False,          # 已经翻译过了，不重复翻译
+        translate=False,           # 已经翻译过了，不重复翻译
         pipe=pipe,
     )
 
