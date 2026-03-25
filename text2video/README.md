@@ -5,19 +5,22 @@
 ## 原理
 
 ```
-文字输入 → 按句子拆分场景 → 中文翻译+质量增强 → Stable Diffusion 生成关键帧
-       → img2img 插帧（让画面动起来）→ moviepy 合成视频
+文字输入 → 按句子拆分场景 → 中文翻译 + 质量增强
+       → Stable Diffusion 生成关键帧（可选 ControlNet 保持主体一致）
+       → img2img 插帧（让画面动起来）
+       → moviepy 合成视频
 ```
 
 ## 项目结构
 
 ```
 text2video/
-├── main.py          # 入口
-├── generator.py     # text2img 生成关键帧
-├── interpolator.py  # img2img 插帧
-├── translator.py    # 中文翻译 + 提示词增强
-├── composer.py      # 合成视频
+├── main.py                 # 入口
+├── generator.py            # text2img 生成关键帧
+├── controlnet_generator.py # ControlNet 模式，保持跨场景主体一致
+├── interpolator.py         # img2img 插帧
+├── translator.py           # 中文翻译 + 提示词增强 + 主体注入
+├── composer.py             # 合成视频
 └── requirements.txt
 ```
 
@@ -29,9 +32,13 @@ Python 3.9+，建议使用虚拟环境。
 # 安装 PyTorch
 python -m pip install torch torchvision
 
-# 安装其余依赖
-python -m pip install diffusers==0.25.1 transformers==4.38.0 huggingface_hub==0.21.4
-python -m pip install accelerate moviepy==1.0.3 Pillow tqdm "numpy<2"
+# 安装核心依赖（注意版本）
+python -m pip install "diffusers==0.25.1" "transformers==4.38.0" "huggingface_hub==0.21.4"
+python -m pip install accelerate "moviepy==1.0.3" Pillow tqdm "numpy<2" sentencepiece
+
+# ControlNet 模式额外需要（--controlnet 参数）
+python -m pip install "opencv-python-headless==4.8.1.78" --only-binary=:all:
+python -m pip install controlnet-aux
 ```
 
 ## 快速开始
@@ -41,9 +48,7 @@ cd text2video
 python main.py --text "一只猫在草地上玩耍。夕阳西下，天空变成橙红色。星空下，城市灯火通明。"
 ```
 
-首次运行会自动从 Hugging Face 下载模型（约 4GB），需要一点时间。
-
-生成的视频默认保存为 `output.mp4`，关键帧图片保存在 `frames/` 目录。
+首次运行会自动从 Hugging Face 下载模型（约 4GB），需要一点时间。生成的视频默认保存为 `output.mp4`，关键帧图片保存在 `frames/` 目录。
 
 ## 参数说明
 
@@ -55,23 +60,36 @@ python main.py --text "一只猫在草地上玩耍。夕阳西下，天空变成
 | `--frames-dir` | `frames` | 关键帧保存目录 |
 | `--model` | `Lykon/dreamshaper-8` | Hugging Face 模型 ID |
 | `--steps` | `40` | text2img 推理步数，越高质量越好越慢 |
-| `--interp-frames` | `8` | 每两个关键帧之间插入几帧，越多越流畅 |
-| `--interp-steps` | `20` | img2img 插帧推理步数 |
 | `--width` | `512` | 图片宽度 |
 | `--height` | `768` | 图片高度 |
 | `--fps` | `24` | 视频帧率 |
+| `--duration` | `0.5` | 插帧模式下每帧显示时长（秒） |
+| `--frames-per-prompt` | `1` | 每个场景生成几张关键帧 |
+| `--interp-frames` | `8` | 每两个关键帧之间插入几帧，越多越流畅 |
+| `--interp-steps` | `20` | img2img 插帧推理步数 |
+| `--controlnet` | `False` | 启用 ControlNet，保持跨场景主体一致性 |
+| `--controlnet-scale` | `0.8` | ControlNet 影响强度（0~1），越高主体轮廓越固定 |
 | `--no-translate` | - | 禁用自动翻译（提示词已是英文时使用） |
 | `--no-interpolate` | - | 禁用插帧，退回静态切换模式 |
 
 ## 使用示例
 
-从文件读取场景：
+从文件读取场景（每行一个）：
 ```bash
-# prompts.txt 每行一个场景
 python main.py --file prompts.txt --output my_video.mp4
 ```
 
-更流畅的插帧（更慢）：
+启用 ControlNet，保持猫在每个场景中外观一致：
+```bash
+python main.py --text "一只猫在草地上玩耍。夕阳西下，天空变成橙红色。星空下，城市灯火通明。" --controlnet
+```
+
+调低 ControlNet 强度，主体更自然（不那么死板）：
+```bash
+python main.py --text "..." --controlnet --controlnet-scale 0.6
+```
+
+更流畅的插帧：
 ```bash
 python main.py --text "..." --interp-frames 12
 ```
@@ -81,15 +99,20 @@ python main.py --text "..." --interp-frames 12
 python main.py --text "..." --steps 20 --interp-frames 4 --interp-steps 10
 ```
 
-使用写实风格模型：
+英文提示词直接输入，跳过翻译：
 ```bash
-python main.py --text "..." --model "SG161222/Realistic_Vision_V5.1_noVAE"
+python main.py --no-translate --text "a cat playing in the meadow. golden hour sunset. starry night city."
 ```
 
-英文提示词直接输入（跳过翻译）：
-```bash
-python main.py --text "a cat playing in the meadow. golden hour sunset." --no-translate
-```
+## ControlNet 模式说明
+
+普通模式下每个场景独立生成，同一只猫在不同场景里外观可能差异较大。启用 `--controlnet` 后：
+
+1. 第一个场景正常生成（参考帧）
+2. 从参考帧提取 Canny 边缘轮廓，保存为 `frames/canny_reference.png`
+3. 后续场景以该轮廓为约束条件生成，主体形状保持一致
+
+ControlNet 需要额外下载模型 `lllyasviel/sd-controlnet-canny`（约 1.4GB）。
 
 ## 推荐模型
 
@@ -107,14 +130,14 @@ python main.py --text "a cat playing in the meadow. golden hour sunset." --no-tr
 | Mac M 系列（MPS） | 30~60 秒 |
 | NVIDIA GPU（CUDA） | 5~15 秒 |
 
-CPU 跑比较慢，建议先用少量场景测试效果：
+CPU 较慢，建议先用少量场景测试：
 ```bash
 python main.py --text "夕阳西下。" --steps 20 --interp-frames 4
 ```
 
 ## 注意事项
 
-- 中文提示词会自动翻译成英文（优先用 Helsinki-NLP 本地模型，失败则用内置词典兜底）
-- SD 模型对英文理解更好，英文提示词效果通常优于中文
+- 中文提示词自动翻译成英文（优先 Helsinki-NLP 本地模型，失败则用内置词典兜底）
+- 翻译会自动提取第一个场景的主体（如"A cat"），注入到后续所有场景，保持主体连贯
 - 图片尺寸建议保持 512 的倍数（如 512x512、512x768）
-- 生成的帧会保留在 `frames/` 目录，重新运行会覆盖
+- 生成的帧保留在 `frames/` 目录，重新运行会覆盖

@@ -36,6 +36,8 @@ def main():
     parser.add_argument("--height", type=int, default=768, help="图片高度")
     parser.add_argument("--no-translate", action="store_true", help="禁用自动翻译")
     parser.add_argument("--no-interpolate", action="store_true", help="禁用插帧，退回静态切换模式")
+    parser.add_argument("--controlnet", action="store_true", help="启用 ControlNet 保持跨场景主体一致性")
+    parser.add_argument("--controlnet-scale", type=float, default=0.8, help="ControlNet 影响强度 0~1")
     parser.add_argument(
         "--model",
         type=str,
@@ -68,16 +70,30 @@ def main():
 
     # 3. 加载模型，生成关键帧（传入已翻译增强的提示词）
     pipe = load_pipeline(args.model)
-    keyframe_paths = generate_frames(
-        prompts=enhanced_prompts,  # 使用翻译后的英文提示词
-        output_dir=args.frames_dir,
-        frames_per_prompt=args.frames_per_prompt,
-        width=args.width,
-        height=args.height,
-        num_inference_steps=args.steps,
-        translate=False,           # 已经翻译过了，不重复翻译
-        pipe=pipe,
-    )
+
+    if args.controlnet:
+        from controlnet_generator import generate_frames_with_controlnet
+        keyframe_paths = generate_frames_with_controlnet(
+            prompts=enhanced_prompts,
+            output_dir=args.frames_dir,
+            width=args.width,
+            height=args.height,
+            num_inference_steps=args.steps,
+            controlnet_conditioning_scale=args.controlnet_scale,
+            base_model_id=args.model,
+            base_pipe=pipe,
+        )
+    else:
+        keyframe_paths = generate_frames(
+            prompts=enhanced_prompts,
+            output_dir=args.frames_dir,
+            frames_per_prompt=args.frames_per_prompt,
+            width=args.width,
+            height=args.height,
+            num_inference_steps=args.steps,
+            translate=False,
+            pipe=pipe,
+        )
 
     # 4. img2img 插帧
     if not args.no_interpolate and len(keyframe_paths) > 1:
