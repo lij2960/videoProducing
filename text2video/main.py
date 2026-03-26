@@ -38,6 +38,8 @@ def main():
     parser.add_argument("--no-interpolate", action="store_true", help="禁用插帧，退回静态切换模式")
     parser.add_argument("--controlnet", action="store_true", help="启用 ControlNet 保持跨场景主体一致性")
     parser.add_argument("--controlnet-scale", type=float, default=0.8, help="ControlNet 影响强度 0~1")
+    parser.add_argument("--ipadapter", action="store_true", help="启用 IP-Adapter 保持跨场景主体外观一致（效果优于 ControlNet）")
+    parser.add_argument("--ipadapter-scale", type=float, default=0.6, help="IP-Adapter 影响强度 0~1，推荐 0.5~0.7")
     parser.add_argument(
         "--model",
         type=str,
@@ -71,7 +73,18 @@ def main():
     # 3. 加载模型，生成关键帧（传入已翻译增强的提示词）
     pipe = load_pipeline(args.model)
 
-    if args.controlnet:
+    if args.ipadapter:
+        from ipadapter_generator import generate_frames_with_ipadapter
+        keyframe_paths = generate_frames_with_ipadapter(
+            prompts=enhanced_prompts,
+            output_dir=args.frames_dir,
+            width=args.width,
+            height=args.height,
+            num_inference_steps=args.steps,
+            ip_adapter_scale=args.ipadapter_scale,
+            base_model_id="runwayml/stable-diffusion-v1-5",  # IP-Adapter 需要 SD1.5
+        )
+    elif args.controlnet:
         from controlnet_generator import generate_frames_with_controlnet
         keyframe_paths = generate_frames_with_controlnet(
             prompts=enhanced_prompts,
